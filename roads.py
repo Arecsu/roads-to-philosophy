@@ -25,6 +25,7 @@ SKIP_CLASS_KEYWORDS = frozenset({
     'reference', 'reflist', 'IPA', 'nowrap',
     'hatnote', 'dablink', 'shortdescription',
     'metadata', 'noprint', 'sisterproject',
+    'thumb', 'gallery',
 })
 
 
@@ -44,8 +45,8 @@ class FirstLinkFinder(HTMLParser):
         super().__init__()
         self.current_title = current_title
         self.found = None
+        self._fallback = None
         self._paren_depth = 0
-        self._in_lead = True
         self._skip_depth = 0
         self._in_p = False
         self._skip_remainder = False
@@ -54,16 +55,8 @@ class FirstLinkFinder(HTMLParser):
         if self._skip_remainder or self.found:
             return
 
-        # inside a skipped element — count nesting to know when we're out
         if self._skip_depth:
             self._skip_depth += 1
-            return
-
-        if not self._in_lead:
-            return
-
-        if tag == 'h2':
-            self._in_lead = False
             return
 
         if tag in SKIP_TAGS:
@@ -85,18 +78,18 @@ class FirstLinkFinder(HTMLParser):
                    'i', 'b', 'em', 'strong', 'small', 'br'):
             return
 
-        if tag == 'a' and self._in_p and self._paren_depth == 0:
+        if tag == 'a' and self._paren_depth == 0:
             href = d.get('href', '')
-            if href.startswith('/wiki/') and not re.search(
-                r'/(File|Special|Help|Wikipedia|Talk|Category|Portal|'
-                r'Wiktionary|Template|Template_talk):', href
-            ):
+            if href.startswith('/wiki/') and ':' not in href[6:].split('#')[0]:
                 t = urllib.parse.unquote(
                     href.replace('/wiki/', '').replace('_', ' ')
                 )
                 if t and t != self.current_title and not t.startswith('#'):
-                    self.found = t
-                    self._skip_remainder = True
+                    if self._in_p:
+                        self.found = t
+                        self._skip_remainder = True
+                    elif self._fallback is None:
+                        self._fallback = t
 
     def handle_endtag(self, tag):
         if self._skip_depth:
@@ -110,7 +103,7 @@ class FirstLinkFinder(HTMLParser):
     def handle_data(self, data):
         if self._skip_depth or self._skip_remainder or self.found:
             return
-        if not self._in_lead or not self._in_p:
+        if not self._in_p:
             return
         for ch in data:
             if ch == '(':
@@ -151,7 +144,7 @@ def fetch_first_link(title, lang):
     html = data['parse']['text']['*']
     finder = FirstLinkFinder(resolved)
     finder.feed(html)
-    return finder.found, resolved
+    return finder.found or finder._fallback, resolved
 
 
 def run(title, lang, target=None, on_step=None):
