@@ -154,7 +154,7 @@ def fetch_first_link(title, lang):
     return finder.found, resolved
 
 
-def run(title, lang, target=None):
+def run(title, lang, target=None, on_step=None):
     if not target:
         target = PHILOSOPHY_ARTICLES.get(lang)
         if not target:
@@ -168,9 +168,13 @@ def run(title, lang, target=None):
     for _ in range(MAX_HOPS):
         if cur in seen:
             chain.append(cur)
+            if on_step:
+                on_step(cur, len(chain))
             return chain, 'loop'
         seen.add(cur)
         chain.append(cur)
+        if on_step:
+            on_step(cur, len(chain))
         if cur == target:
             return chain, 'reached φ'
 
@@ -183,6 +187,9 @@ def run(title, lang, target=None):
             seen.add(resolved)
             chain[-1] = resolved
             cur = resolved
+            if on_step:
+                sys.stdout.write('\r' + ' ' * 80 + '\r')
+                on_step(cur, len(chain))
             if cur == target:
                 return chain, 'reached φ'
 
@@ -243,14 +250,13 @@ def main():
     else:
         lang, title, target = args[0], args[1].replace('_', ' '), args[2]
 
-    chain, status = run(title, lang, target)
-    print()
-    if plain:
-        for node in chain:
-            print(node)
-    else:
-        for i, node in enumerate(chain, 1):
-            print(f'{i}. {node}')
+    def step(node, idx):
+        if plain:
+            print(node, flush=True)
+        else:
+            print(f'{idx}. {node}', flush=True)
+
+    chain, status = run(title, lang, target, on_step=step)
     print(f'\n({status})')
 
 
