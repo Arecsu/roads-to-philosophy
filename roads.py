@@ -168,30 +168,19 @@ def run(title, lang, target=None, on_step=None):
     for _ in range(MAX_HOPS):
         if cur in seen:
             chain.append(cur)
-            if on_step:
-                on_step(cur, len(chain))
             return chain, 'loop'
+
+        nxt, resolved = fetch_first_link(cur, lang)
+
+        if resolved != cur:
+            cur = resolved
+
         seen.add(cur)
         chain.append(cur)
         if on_step:
             on_step(cur, len(chain))
         if cur == target:
             return chain, 'reached φ'
-
-        nxt, resolved = fetch_first_link(cur, lang)
-
-        time.sleep(0.6)
-
-        if resolved != cur:
-            seen.discard(cur)
-            seen.add(resolved)
-            chain[-1] = resolved
-            cur = resolved
-            if on_step:
-                sys.stdout.write('\r' + ' ' * 80 + '\r')
-                on_step(cur, len(chain))
-            if cur == target:
-                return chain, 'reached φ'
 
         if not nxt:
             return chain, f'error: no valid link in "{cur}"'
