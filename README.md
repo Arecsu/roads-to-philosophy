@@ -50,7 +50,7 @@ Philosophy
 2. Strips infoboxes, navboxes, references, hatnotes, etc.
 3. Walks the first `<p>` in the lead section, tracking parenthesis depth, returns the first `/wiki/` link not inside parentheses (skipping `File:`, `Special:`, etc.).
 4. Follows that link and repeats until reaching Philosophy, a loop, or 60 hops.
-5. 0.6s delay between hops; exponential backoff on 429s.
+5. Exponential backoff on 429s (rate limits).
 
 ## Credits
 
