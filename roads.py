@@ -44,15 +44,15 @@ class FirstLinkFinder(HTMLParser):
     def __init__(self, current_title):
         super().__init__()
         self.current_title = current_title
-        self.found = None
+        self.candidates = []
         self._fallback = None
         self._paren_depth = 0
         self._skip_depth = 0
         self._in_p = False
-        self._skip_remainder = False
+        self._done = False
 
     def handle_starttag(self, tag, attrs):
-        if self._skip_remainder or self.found:
+        if self._done:
             return
 
         if self._skip_depth:
@@ -86,8 +86,7 @@ class FirstLinkFinder(HTMLParser):
                 )
                 if t and t != self.current_title and not t.startswith('#'):
                     if self._in_p:
-                        self.found = t
-                        self._skip_remainder = True
+                        self.candidates.append(t)
                     elif self._fallback is None:
                         self._fallback = t
 
@@ -99,9 +98,11 @@ class FirstLinkFinder(HTMLParser):
         if tag == 'p' and self._in_p:
             self._in_p = False
             self._paren_depth = 0
+            if self.candidates:
+                self._done = True
 
     def handle_data(self, data):
-        if self._skip_depth or self._skip_remainder or self.found:
+        if self._skip_depth or self._done:
             return
         if not self._in_p:
             return
@@ -112,7 +113,7 @@ class FirstLinkFinder(HTMLParser):
                 self._paren_depth = max(0, self._paren_depth - 1)
 
 
-def fetch_first_link(title, lang):
+def fetch_candidates(title, lang):
     params = urllib.parse.urlencode({
         'action': 'parse',
         'page': title.replace(' ', '_'),
@@ -144,7 +145,7 @@ def fetch_first_link(title, lang):
     html = data['parse']['text']['*']
     finder = FirstLinkFinder(resolved)
     finder.feed(html)
-    return finder.found or finder._fallback, resolved
+    return finder.candidates or ([finder._fallback] if finder._fallback else []), resolved
 
 
 def run(title, lang, target=None, on_step=None):
@@ -163,7 +164,7 @@ def run(title, lang, target=None, on_step=None):
             chain.append(cur)
             return chain, 'loop'
 
-        nxt, resolved = fetch_first_link(cur, lang)
+        candidates, resolved = fetch_candidates(cur, lang)
 
         if resolved != cur:
             cur = resolved
@@ -175,8 +176,25 @@ def run(title, lang, target=None, on_step=None):
         if cur == target:
             return chain, 'reached φ'
 
-        if not nxt:
+        if not candidates:
             return chain, f'error: no valid link in "{cur}"'
+
+        # Try each candidate in order until one leads somewhere
+        nxt = None
+        for c in candidates:
+            if c == target:
+                nxt = c
+                break
+            try:
+                sub, _ = fetch_candidates(c, lang)
+                if sub:
+                    nxt = c
+                    break
+            except RuntimeError:
+                continue
+
+        if not nxt:
+            return chain, f'error: no viable path from "{cur}"'
         cur = nxt
 
     return chain, 'loop (max hops)'
